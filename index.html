@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#111827">
+<title>Harisree Plumbing</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,sans-serif;background:#f3f4f6;color:#111827}
+header{background:#111827;color:white;padding:18px 16px;position:sticky;top:0;z-index:5}
+header h1{margin:0;font-size:21px}header small{opacity:.75}
+nav{display:flex;background:white;position:sticky;top:67px;z-index:4;border-bottom:1px solid #ddd}
+nav button{flex:1;border:0;background:white;padding:13px 4px;font-size:12px}
+nav button.active{color:#2563eb;border-bottom:3px solid #2563eb;font-weight:bold}
+main{padding:15px;max-width:700px;margin:auto}.page{display:none}.page.active{display:block}
+.card{background:white;border-radius:14px;padding:15px;margin-bottom:14px;box-shadow:0 1px 5px #0001}
+h2{font-size:18px;margin:3px 0 14px}h3{margin:4px 0 10px}
+label{display:block;font-size:13px;color:#6b7280;margin:9px 0 4px}
+input,select{width:100%;padding:12px;border:1px solid #d1d5db;border-radius:9px;font-size:16px;background:white}
+button.primary,.primary{background:#2563eb;color:white;border:0;border-radius:9px;padding:12px 16px;font-size:15px;font-weight:bold}
+button.danger{background:#fee2e2;color:#b91c1c;border:0;border-radius:7px;padding:7px 9px}
+button.secondary{background:#e5e7eb;color:#111827;border:0;border-radius:9px;padding:11px 14px}
+.row{display:flex;gap:9px}.row>*{flex:1}.product,.billitem{border:1px solid #e5e7eb;border-radius:10px;padding:11px;margin:8px 0}
+.productline{display:flex;justify-content:space-between;gap:8px}.muted{color:#6b7280;font-size:13px}
+.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.stat{background:white;padding:15px;border-radius:12px}.stat b{font-size:20px;display:block;margin-top:4px}
+.profit{color:#15803d;font-weight:bold}.loss{color:#dc2626;font-weight:bold}
+.empty{text-align:center;color:#6b7280;padding:20px}.total{font-size:20px;font-weight:bold;text-align:right;margin-top:10px}
+.smallbtn{font-size:12px;padding:7px 9px}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+#cloudLogin{position:fixed;inset:0;background:#f3f4f6;z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px}
+#cloudLogin .loginbox{background:white;width:100%;max-width:420px;padding:22px;border-radius:16px;box-shadow:0 5px 25px #0002}
+#cloudLogin input{margin-bottom:8px}.cloudmsg{font-size:13px;color:#6b7280;margin-top:10px}
+</style></head>
+<body>
+<div id="cloudLogin"><div class="loginbox">
+<h2>Harisree Plumbing</h2><p class="muted">Login to sync your products and bills across devices.</p>
+<label>Email</label><input id="cloudEmail" type="email" placeholder="your email">
+<label>Password</label><input id="cloudPassword" type="password" placeholder="Password">
+<button class="primary" style="width:100%;margin-top:8px" onclick="cloudSignIn()">Login</button>
+<button class="secondary" style="width:100%;margin-top:8px" onclick="cloudSignUp()">Create account</button>
+<div id="cloudMsg" class="cloudmsg"></div>
+</div></div>
+<header><h1>Harisree Plumbing</h1><small>Offline • Your data stays on this phone</small></header>
+<nav>
+<button class="active" onclick="showPage('dashboard',this)">Home</button>
+<button onclick="showPage('products',this)">Products</button>
+<button onclick="showPage('bill',this)">New Bill</button>
+<button onclick="showPage('reports',this)">Reports</button><button onclick="cloudSignOut()">Logout</button>
+</nav>
+
+<main>
+<section id="dashboard" class="page active">
+<div class="statgrid">
+<div class="stat"><span class="muted">Today's Sales</span><b id="dSales">₹0</b></div>
+<div class="stat"><span class="muted">Today's Profit</span><b class="profit" id="dProfit">₹0</b></div>
+</div>
+<div class="card" style="margin-top:14px">
+<h2>Quick Start</h2>
+<p class="muted">Add your shop products with buying and selling prices, then enter each bill. The app calculates your profit automatically.</p>
+<button class="primary" onclick="showPage('products',document.querySelectorAll('nav button')[1])">Add Products</button>
+</div>
+<div class="card"><h2>Recent Bills</h2><div id="recentBills"></div></div>
+</section>
+
+<section id="products" class="page">
+<div class="card">
+<h2>Add Product</h2>
+<label>Product name</label><input id="pName" placeholder='e.g. PVC Elbow 1/2"'>
+<div class="row">
+<div><label>Buying price (₹)</label><input id="pBuy" type="number" min="0" step="0.01" placeholder="10"></div>
+<div><label>Selling price (₹)</label><input id="pSell" type="number" min="0" step="0.01" placeholder="15"></div>
+</div>
+<label>Unit</label>
+<select id="pUnit"><option value="pcs">Pieces (pcs)</option><option value="m">Meter (m)</option></select>
+<label>Opening stock (optional)</label><input id="pStock" type="number" min="0" step="0.01" placeholder="0">
+<br><button class="primary" onclick="addProduct()">Save Product</button>
+</div>
+<div class="card"><h2>Your Products</h2>
+<label>Search products</label><input id="productSearch" placeholder="Search product name..." oninput="renderProducts()">
+<div id="productList"></div></div>
+</section>
+
+<section id="bill" class="page">
+<div class="card">
+<h2>New Bill</h2>
+<label>Search product</label><input id="billSearch" placeholder="Type product name..." oninput="filterBillProducts()">
+<label>Select product</label><select id="billProduct" onchange="updateBillQtyLabel()"></select>
+<div class="muted" style="margin:6px 0">Same product cannot be added twice in one bill.</div>
+<div class="row"><div><label id="billQtyLabel">Quantity</label><input id="billQty" type="number" min="0.01" step="0.01" value="1"></div>
+<div style="display:flex;align-items:end"><button class="primary" style="width:100%" onclick="addToBill()">Add</button></div></div>
+<div id="cart"></div>
+<div class="total">Total: ₹<span id="billTotal">0</span></div>
+<br><button class="primary" style="width:100%" onclick="saveBill()">Save Bill & Calculate Profit</button>
+</div>
+</section>
+
+<section id="reports" class="page">
+<div class="card"><h2>Sales & Profit</h2>
+<label>Choose period</label><select id="period" onchange="toggleCustomDates();renderReports()"><option value="today">Today</option><option value="week">This Week</option><option value="month">This Month</option><option value="all">All Time</option><option value="custom">Custom date / period</option></select>
+<div id="customDates" style="display:none">
+<label>From</label><input id="fromDate" type="date" onchange="renderReports()">
+<label>To</label><input id="toDate" type="date" onchange="renderReports()">
+</div>
+<div class="statgrid" style="margin-top:12px">
+<div class="stat"><span class="muted">Sales</span><b id="rSales">₹0</b></div>
+<div class="stat"><span class="muted">Cost</span><b id="rCost">₹0</b></div>
+<div class="stat"><span class="muted">Profit</span><b class="profit" id="rProfit">₹0</b></div>
+<div class="stat"><span class="muted">Bills</span><b id="rBills">0</b></div>
+</div></div>
+<div class="card"><h2>Bill History</h2><div id="history"></div></div>
+</section>
+</main>
+
+<script>
+const KEY='shopProfitTracker_v1';
+let data=JSON.parse(localStorage.getItem(KEY)||'{"products":[],"bills":[]}');
+let cart=[];
+
+const SUPABASE_URL="https://rhaciieblwvshxdclhhk.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY="sb_publishable_RxzVPgEUujwkfz9prUvY9g_Rst_mx01";
+const supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY);
+let cloudUser=null, cloudSyncBusy=false;
+
+function save(){
+ localStorage.setItem(KEY,JSON.stringify(data));
+ if(cloudUser) cloudSave();
+}
+async function cloudSignIn(){
+ const email=document.getElementById('cloudEmail').value.trim(),password=document.getElementById('cloudPassword').value;
+ const {data:r,error}=await supabaseClient.auth.signInWithPassword({email,password});
+ if(error){document.getElementById('cloudMsg').textContent=error.message;return}
+ cloudUser=r.user;await cloudLoad();cloudOpen();
+}
+async function cloudSignUp(){
+ const email=document.getElementById('cloudEmail').value.trim(),password=document.getElementById('cloudPassword').value;
+ if(!email||!password){document.getElementById('cloudMsg').textContent='Enter email and password.';return}
+ const {data:r,error}=await supabaseClient.auth.signUp({email,password});
+ document.getElementById('cloudMsg').textContent=error?error.message:'Account created. Check your email if confirmation is enabled, then log in.';
+ if(!error && r.session){cloudUser=r.user;await cloudLoad();cloudOpen();}
+}
+async function cloudSignOut(){await supabaseClient.auth.signOut();location.reload()}
+function cloudOpen(){document.getElementById('cloudLogin').style.display='none';}
+async function cloudLoad(){
+ if(!cloudUser)return;
+ const [pr,br]=await Promise.all([
+   supabaseClient.from('products').select('*').order('name'),
+   supabaseClient.from('bills').select('*').order('created_at',{ascending:false})
+ ]);
+ if(pr.error||br.error){
+   document.getElementById('cloudMsg').textContent=(pr.error||br.error).message;
+   return;
+ }
+ data.products=(pr.data||[]).map(p=>({id:Number(p.id),name:p.name,buy:Number(p.buy_price),sell:Number(p.sell_price),unit:p.unit,stock:Number(p.stock)}));
+ data.bills=(br.data||[]).map(b=>({id:Number(b.id),date:b.created_at,items:b.items,sale:Number(b.sale),cost:Number(b.cost),profit:Number(b.profit)}));
+ localStorage.setItem(KEY,JSON.stringify(data));
+ renderDashboard();renderProducts();renderSelect();renderReports();toggleCustomDates();
+}
+async function cloudSave(){
+ if(!cloudUser||cloudSyncBusy)return;
+ cloudSyncBusy=true;
+ try{
+   await supabaseClient.from('products').delete().eq('user_id',cloudUser.id);
+   await supabaseClient.from('bills').delete().eq('user_id',cloudUser.id);
+   if(data.products.length){
+     const rows=data.products.map(p=>({id:p.id,user_id:cloudUser.id,name:p.name,buy_price:p.buy,sell_price:p.sell,unit:p.unit||'pcs',stock:p.stock}));
+     const {error}=await supabaseClient.from('products').insert(rows);
+     if(error)throw error;
+   }
+   if(data.bills.length){
+     const rows=data.bills.map(b=>({id:b.id,user_id:cloudUser.id,items:b.items,sale:b.sale,cost:b.cost,profit:b.profit,created_at:b.date||new Date().toISOString()}));
+     const {error}=await supabaseClient.from('bills').insert(rows);
+     if(error)throw error;
+   }
+ }catch(e){console.error('Cloud sync failed:',e)}
+ finally{cloudSyncBusy=false}
+}
+function money(n){return Number(n||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function dateKey(d=new Date()){let x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')}
+function showPage(id,btn){
+ document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+ document.getElementById(id).classList.add('active');
+ document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+ if(btn)btn.classList.add('active');
+ if(id==='products')renderProducts();
+ if(id==='bill')renderSelect();
+ if(id==='reports')renderReports();
+ if(id==='dashboard')renderDashboard();
+}
+function addProduct(){
+ let name=pName.value.trim(),buy=+pBuy.value,sell=+pSell.value,unit=pUnit.value,stock=+pStock.value||0;
+ if(!name||buy<0||sell<0||stock<0){alert('Enter valid product details.');return}
+
+ const normalize=s=>String(s||'').trim().replace(/\s+/g,' ').toLowerCase();
+ const duplicate=data.products.find(p=>normalize(p.name)===normalize(name));
+
+ if(duplicate){
+   alert('This product is already added: "'+duplicate.name+'". Please edit the existing product instead of adding it again.');
+   return;
+ }
+
+ data.products.push({id:Date.now(),name,buy,sell,unit,stock});
+ save();pName.value=pBuy.value=pSell.value=pStock.value='';
+ pUnit.value='pcs';
+ renderProducts();renderSelect();alert('Product saved.');
+}
+function renderProducts(){
+ let el=document.getElementById('productList');
+ let q=(document.getElementById('productSearch')?.value||'').trim().toLowerCase();
+ let products=data.products.filter(p=>p.name.toLowerCase().includes(q));
+ if(!data.products.length){el.innerHTML='<div class="empty">No products yet.</div>';return}
+ if(!products.length){el.innerHTML='<div class="empty">No matching products.</div>';return}
+ el.innerHTML=products.map(p=>{
+   let unit=p.unit||'pcs', label=unit==='m'?'m':'pcs';p.unit=unit;
+   return `<div class="product"><div class="productline"><b>${esc(p.name)}</b><span>
+   <button class="secondary smallbtn" onclick="editProduct(${p.id})">Edit</button>
+   <button class="danger smallbtn" onclick="deleteProduct(${p.id})">Delete</button></span></div>
+   <div class="muted">Buy ₹${money(p.buy)}/${label} • Sell ₹${money(p.sell)}/${label} • Stock ${money(p.stock)} ${label} • Profit/unit <span class="${p.sell>=p.buy?'profit':'loss'}">₹${money(p.sell-p.buy)}</span></div></div>`;
+ }).join('');
+}
+function deleteProduct(id){if(confirm('Delete this product?')){data.products=data.products.filter(p=>p.id!==id);save();renderProducts();renderSelect()}}
+function editProduct(id){
+ let p=data.products.find(x=>x.id===id); if(!p)return;
+ let name=prompt('Product name:',p.name); if(name===null)return;
+ let buy=prompt('Buying price per '+((p.unit||'pcs')==='m'?'meter':'piece')+' (₹):',p.buy); if(buy===null)return;
+ let sell=prompt('Selling price per '+((p.unit||'pcs')==='m'?'meter':'piece')+' (₹):',p.sell); if(sell===null)return;
+ let stock=prompt('Stock '+((p.unit||'pcs')==='m'?'(meters)':'(pieces)')+':',p.stock); if(stock===null)return;
+ let currentUnit=p.unit||'pcs';
+ let unit=prompt('Unit: enter "m" for Meter or "pcs" for Pieces:',currentUnit); if(unit===null)return;
+ unit=unit.toLowerCase().trim();
+ if(unit==='meter'||unit==='metre'||unit==='meters'||unit==='metres')unit='m';
+ if(unit!=='m'&&unit!=='pcs'){alert('Unit must be "m" or "pcs".');return}
+ name=name.trim(); buy=+buy; sell=+sell; stock=+stock;
+ if(!name||buy<0||sell<0||stock<0){alert('Invalid details.');return}
+ p.name=name;p.buy=buy;p.sell=sell;p.stock=stock;p.unit=unit;
+ save();renderProducts();renderSelect();
+}
+function renderSelect(){
+ let s=document.getElementById('billProduct');
+ let q=(document.getElementById('billSearch')?.value||'').trim().toLowerCase();
+ let products=data.products.filter(p=>p.name.toLowerCase().includes(q));
+ let available=products.filter(p=>!cart.some(item=>String(item.productId)===String(p.id)));
+ s.innerHTML=available.length?available.map(p=>{
+   let unit=p.unit||'pcs', label=unit==='m'?'m':'pcs';
+   return `<option value="${p.id}">${esc(p.name)} — ₹${money(p.sell)}/${label}</option>`;
+ }).join(''):'<option value="">All matching products already added</option>';
+ updateBillQtyLabel();
+}
+function filterBillProducts(){renderSelect();}
+function updateBillQtyLabel(){
+ let p=data.products.find(x=>x.id==billProduct.value);
+ let label=p&&p.unit==='m'?'Quantity (meters)':'Quantity (pieces)';
+ let el=document.getElementById('billQtyLabel');if(el)el.textContent=label;
+}
+
+function addToBill(){
+ if(!data.products.length){alert('Add a product first.');return}
+
+ let selectedId=String(document.getElementById('billProduct').value||'');
+ let p=data.products.find(x=>String(x.id)===selectedId);
+ let q=Number(document.getElementById('billQty').value);
+
+ if(!p){
+   alert('Select a product first.');
+   return;
+ }
+ if(!Number.isFinite(q)||q<=0){
+   alert('Enter a valid quantity.');
+   return;
+ }
+
+ const normalize=s=>String(s||'').trim().replace(/\s+/g,' ').toLowerCase();
+ const duplicate=cart.some(item=>{
+   let old=data.products.find(x=>String(x.id)===String(item.productId));
+   return String(item.productId)===String(p.id) || (old && normalize(old.name)===normalize(p.name));
+ });
+
+ if(duplicate){
+   alert('This product is already in this bill. Change its quantity in the bill below instead of adding it again.');
+   renderSelect();
+   return;
+ }
+
+ cart.push({productId:p.id,qty:q});
+ renderCart();
+ renderSelect();
+ document.getElementById('billQty').value=1;
+}
+function renderCart(){
+ let el=document.getElementById('cart');
+ if(!cart.length){el.innerHTML='<div class="empty">No items added.</div>';billTotal.textContent='0';return}
+ let total=0;
+ el.innerHTML=cart.map((x,i)=>{
+   let p=data.products.find(a=>a.id===x.productId),t=p.sell*x.qty;total+=t;
+   let unit=p.unit||'pcs',label=unit==='m'?'m':'pcs';
+   return `<div class="billitem"><div class="productline"><b>${esc(p.name)}</b><button class="danger" onclick="cart.splice(${i},1);renderCart()">Remove</button></div><div class="muted">${money(x.qty)} ${label} × ₹${money(p.sell)}/${label} = ₹${money(t)}</div></div>`;
+ }).join('');
+ billTotal.textContent=money(total);
+}
+function saveBill(){
+ if(!cart.length){alert('Add at least one item.');return}
+ let sale=0,cost=0;
+ let items=cart.map(x=>{
+   let p=data.products.find(a=>a.id===x.productId);
+   sale+=p.sell*x.qty;cost+=p.buy*x.qty;
+   if(p.stock>=x.qty)p.stock-=x.qty;
+   return {productId:p.id,name:p.name,qty:x.qty,sell:p.sell,buy:p.buy,unit:p.unit||'pcs'};
+ });
+ data.bills.unshift({id:Date.now(),date:new Date().toISOString(),items,sale,cost,profit:sale-cost});
+ save();cart=[];renderCart();
+ if(document.getElementById('billSearch'))document.getElementById('billSearch').value='';
+ renderSelect();renderDashboard();renderProducts();
+ alert('Bill saved. Profit: ₹'+money(sale-cost));showPage('dashboard',document.querySelector('nav button'));
+}
+function inPeriod(date,period){
+ let d=new Date(date),now=new Date();
+ if(period==='all')return true;
+ if(period==='today')return dateKey(d)===dateKey(now);
+ if(period==='month')return d.getFullYear()===now.getFullYear()&&d.getMonth()===now.getMonth();
+ if(period==='custom'){
+   let from=document.getElementById('fromDate').value;
+   let to=document.getElementById('toDate').value;
+   if(!from&&!to)return true;
+   let df=from?new Date(from+'T00:00:00'):new Date(-8640000000000000);
+   let dt=to?new Date(to+'T23:59:59.999'):new Date(8640000000000000);
+   return d>=df&&d<=dt;
+ }
+ let start=new Date(now);let day=(now.getDay()+6)%7;start.setDate(now.getDate()-day);start.setHours(0,0,0,0);return d>=start;
+}
+function toggleCustomDates(){
+ document.getElementById('customDates').style.display=document.getElementById('period').value==='custom'?'block':'none';
+}
+function renderReports(){
+ let period=document.getElementById('period').value,bs=data.bills.filter(b=>inPeriod(b.date,period));
+ let sale=bs.reduce((a,b)=>a+b.sale,0),cost=bs.reduce((a,b)=>a+b.cost,0);
+ document.getElementById('rSales').textContent='₹'+money(sale);document.getElementById('rCost').textContent='₹'+money(cost);document.getElementById('rProfit').textContent='₹'+money(sale-cost);document.getElementById('rBills').textContent=bs.length;
+ document.getElementById('history').innerHTML=bs.length?bs.map(b=>`<div class="billitem"><div class="productline"><b>Bill #${b.id}</b><span class="profit">Profit ₹${money(b.profit)}</span></div><div class="muted">${new Date(b.date).toLocaleString()}</div><div class="muted">${b.items.map(i=>`${esc(i.name)} × ${money(i.qty)} ${i.unit==='m'?'m':'pcs'}`).join(', ')}</div><div style="margin-top:5px"><b>Sale ₹${money(b.sale)}</b> • Cost ₹${money(b.cost)}</div><div style="margin-top:9px"><button class="secondary smallbtn" onclick="editBill(${b.id})">Edit</button> <button class="danger smallbtn" onclick="deleteBill(${b.id})">Delete</button></div></div>`).join(''):'<div class="empty">No bills for this period.</div>';
+}
+
+function recalcBill(b){
+ b.sale=0;b.cost=0;
+ b.items.forEach(i=>{b.sale+=i.sell*i.qty;b.cost+=i.buy*i.qty});
+ b.profit=b.sale-b.cost;
+}
+
+
+function editBill(id){
+ let password=prompt('Enter password to edit this bill:');
+ if(password!=='1000'){alert('Incorrect password. Bill was not changed.');return}
+ let b=data.bills.find(x=>x.id===id); if(!b)return;
+ let original=JSON.parse(JSON.stringify(b));
+ original.items.forEach(item=>{
+   let p=data.products.find(x=>x.id===item.productId) || data.products.find(x=>x.name===item.name);
+   if(p)p.stock+=item.qty;
+ });
+
+ let newItems=[];
+ for(let i=0;i<b.items.length;i++){
+   let item=b.items[i], unit=item.unit||'pcs', label=unit==='m'?'meters':'pieces';
+   let q=prompt(`Quantity for ${item.name} (${label}):`,item.qty);
+   if(q===null){
+     original.items.forEach(oldItem=>{let p=data.products.find(x=>x.id===oldItem.productId)||data.products.find(x=>x.name===oldItem.name);if(p)p.stock-=oldItem.qty;});
+     return;
+   }
+   q=Number(q);
+   if(!Number.isFinite(q)||q<=0){
+     alert('Quantity must be greater than 0. No changes were saved.');
+     original.items.forEach(oldItem=>{let p=data.products.find(x=>x.id===oldItem.productId)||data.products.find(x=>x.name===oldItem.name);if(p)p.stock-=oldItem.qty;});
+     return;
+   }
+   newItems.push({...item,qty:q});
+ }
+ for(let i=newItems.length-1;i>=0;i--){
+   if(confirm(`Remove "${newItems[i].name}" from this bill?`)) newItems.splice(i,1);
+ }
+ if(!newItems.length){
+   if(confirm('No items remain. Delete this bill?')){
+     data.bills=data.bills.filter(x=>x.id!==id);save();renderReports();renderDashboard();renderProducts();alert('Bill deleted.');
+   } else {
+     original.items.forEach(oldItem=>{let p=data.products.find(x=>x.id===oldItem.productId)||data.products.find(x=>x.name===oldItem.name);if(p)p.stock-=oldItem.qty;});
+   }
+   return;
+ }
+ b.items=newItems;
+ b.items.forEach(item=>{
+   let p=data.products.find(x=>x.id===item.productId)||data.products.find(x=>x.name===item.name);
+   if(p)p.stock=Math.max(0,p.stock-item.qty);
+ });
+ recalcBill(b);save();renderReports();renderDashboard();renderProducts();
+ alert('Existing bill updated successfully.');
+}
+function deleteBill(id){
+ let password=prompt('Enter password to delete this bill:');
+ if(password!=='1000'){alert('Incorrect password. Bill was not deleted.');return}
+ let b=data.bills.find(x=>x.id===id);
+ if(!b)return;
+ if(!confirm('Delete this bill permanently?'))return;
+ // Return stock used by the deleted bill.
+ b.items.forEach(item=>{
+   let p=data.products.find(x=>x.name===item.name);
+   if(p)p.stock+=item.qty;
+ });
+ data.bills=data.bills.filter(x=>x.id!==id);
+ save();renderReports();renderDashboard();renderProducts();
+}
+
+function renderDashboard(){
+ let bs=data.bills.filter(b=>dateKey(b.date)===dateKey());
+ dSales.textContent='₹'+money(bs.reduce((a,b)=>a+b.sale,0));dProfit.textContent='₹'+money(bs.reduce((a,b)=>a+b.profit,0));
+ recentBills.innerHTML=data.bills.slice(0,5).map(b=>`<div class="billitem"><div class="productline"><b>₹${money(b.sale)}</b><span class="profit">Profit ₹${money(b.profit)}</span></div><div class="muted">${new Date(b.date).toLocaleString()}</div></div>`).join('')||'<div class="empty">No bills yet.</div>';
+}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+supabaseClient.auth.getSession().then(async ({data:r})=>{
+ if(r.session){cloudUser=r.session.user;await cloudLoad();cloudOpen();}
+ else{document.getElementById('cloudLogin').style.display='flex';}
+});
+</script>
+</body>
+</html>
