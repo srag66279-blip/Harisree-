@@ -91,7 +91,10 @@ button.secondary{background:#e5e7eb;color:#111827;border:0;border-radius:9px;pad
 <div class="row"><div><label id="billQtyLabel">Quantity</label><input id="billQty" type="number" min="0.01" step="0.01" value="1"></div>
 <div style="display:flex;align-items:end"><button class="primary" style="width:100%" onclick="addToBill()">Add</button></div></div>
 <div id="cart"></div>
-<div class="total">Total: ₹<span id="billTotal">0</span></div>
+<div class="total" style="font-size:16px;text-align:left">Subtotal: ₹<span id="billSubtotal">0</span></div>
+<label>Discount (₹)</label>
+<input id="billDiscount" type="number" min="0" step="0.01" value="0" placeholder="0" oninput="renderCart()">
+<div class="total">Final Total: ₹<span id="billTotal">0</span></div>
 <br><button class="primary" style="width:100%" onclick="saveBill()">Save Bill & Calculate Profit</button>
 </div>
 </section>
@@ -153,7 +156,7 @@ async function cloudLoad(){
    return;
  }
  data.products=(pr.data||[]).map(p=>({id:Number(p.id),name:p.name,buy:Number(p.buy_price),sell:Number(p.sell_price),unit:p.unit,stock:Number(p.stock)}));
- data.bills=(br.data||[]).map(b=>({id:Number(b.id),date:b.created_at,items:b.items,sale:Number(b.sale),cost:Number(b.cost),profit:Number(b.profit)}));
+ data.bills=(br.data||[]).map(b=>({id:Number(b.id),date:b.created_at,items:b.items,sale:Number(b.sale),subtotal:Number(b.subtotal ?? b.sale ?? 0),discount:Number(b.discount||0),cost:Number(b.cost),profit:Number(b.profit)}));
  localStorage.setItem(KEY,JSON.stringify(data));
  renderDashboard();renderProducts();renderSelect();renderReports();toggleCustomDates();
 }
@@ -169,7 +172,7 @@ async function cloudSave(){
      if(error)throw error;
    }
    if(data.bills.length){
-     const rows=data.bills.map(b=>({id:b.id,user_id:cloudUser.id,items:b.items,sale:b.sale,cost:b.cost,profit:b.profit,created_at:b.date||new Date().toISOString()}));
+     const rows=data.bills.map(b=>({id:b.id,user_id:cloudUser.id,items:b.items,subtotal:Number(b.subtotal??b.sale??0),discount:Number(b.discount||0),sale:Number(b.sale),cost:Number(b.cost),profit:Number(b.profit),created_at:b.date||new Date().toISOString()}));
      const {error}=await supabaseClient.from('bills').insert(rows);
      if(error)throw error;
    }
@@ -288,31 +291,63 @@ function addToBill(){
  document.getElementById('billQty').value=1;
 }
 function renderCart(){
- let el=document.getElementById('cart');
- if(!cart.length){el.innerHTML='<div class="empty">No items added.</div>';billTotal.textContent='0';return}
- let total=0;
- el.innerHTML=cart.map((x,i)=>{
-   let p=data.products.find(a=>a.id===x.productId),t=p.sell*x.qty;total+=t;
-   let unit=p.unit||'pcs',label=unit==='m'?'m':'pcs';
-   return `<div class="billitem"><div class="productline"><b>${esc(p.name)}</b><button class="danger" onclick="cart.splice(${i},1);renderCart()">Remove</button></div><div class="muted">${money(x.qty)} ${label} × ₹${money(p.sell)}/${label} = ₹${money(t)}</div></div>`;
- }).join('');
- billTotal.textContent=money(total);
+  let el=document.getElementById('cart');
+  let subtotalEl=document.getElementById('billSubtotal');
+  let totalEl=document.getElementById('billTotal');
+  if(!cart.length){
+    el.innerHTML='<div class="empty">No items added.</div>';
+    if(subtotalEl)subtotalEl.textContent='0.00';
+    if(totalEl)totalEl.textContent='0.00';
+    return;
+  }
+  let subtotal=0;
+  el.innerHTML=cart.map((x,i)=>{
+    let p=data.products.find(a=>a.id===x.productId),t=p.sell*x.qty;
+    subtotal+=t;
+    let unit=p.unit||'pcs',label=unit==='m'?'m':'pcs';
+    return `<div class="billitem"><div class="productline"><b>${esc(p.name)}</b><button class="danger" onclick="cart.splice(${i},1);renderCart()">Remove</button></div><div class="muted">${money(x.qty)} ${label} × ₹${money(p.sell)}/${label} = ₹${money(t)}</div></div>`;
+  }).join('');
+  let discount=Math.max(0,Number(document.getElementById('billDiscount')?.value)||0);
+  if(discount>subtotal)discount=subtotal;
+  let finalTotal=subtotal-discount;
+  if(subtotalEl)subtotalEl.textContent=money(subtotal);
+  if(totalEl)totalEl.textContent=money(finalTotal);
 }
 function saveBill(){
- if(!cart.length){alert('Add at least one item.');return}
- let sale=0,cost=0;
- let items=cart.map(x=>{
-   let p=data.products.find(a=>a.id===x.productId);
-   sale+=p.sell*x.qty;cost+=p.buy*x.qty;
-   if(p.stock>=x.qty)p.stock-=x.qty;
-   return {productId:p.id,name:p.name,qty:x.qty,sell:p.sell,buy:p.buy,unit:p.unit||'pcs'};
- });
- data.bills.unshift({id:Date.now(),date:new Date().toISOString(),items,sale,cost,profit:sale-cost});
- save();cart=[];renderCart();
- if(document.getElementById('billSearch'))document.getElementById('billSearch').value='';
- renderSelect();renderDashboard();renderProducts();
- alert('Bill saved. Profit: ₹'+money(sale-cost));showPage('dashboard',document.querySelector('nav button'));
+  if(!cart.length){alert('Add at least one item.');return}
+  let subtotal=0,cost=0;
+  let items=cart.map(x=>{
+    let p=data.products.find(a=>a.id===x.productId);
+    subtotal+=p.sell*x.qty;
+    cost+=p.buy*x.qty;
+    if(p.stock>=x.qty)p.stock-=x.qty;
+    return {productId:p.id,name:p.name,qty:x.qty,sell:p.sell,buy:p.buy,unit:p.unit||'pcs'};
+  });
+  let discount=Math.max(0,Number(document.getElementById('billDiscount')?.value)||0);
+  if(discount>subtotal){
+    alert('Discount cannot be greater than the subtotal.');
+    return;
+  }
+  let sale=subtotal-discount;
+  let profit=sale-cost;
+  data.bills.unshift({
+    id:Date.now(),
+    date:new Date().toISOString(),
+    items,
+    subtotal,
+    discount,
+    sale,
+    cost,
+    profit
+  });
+  save();cart=[];renderCart();
+  if(document.getElementById('billDiscount'))document.getElementById('billDiscount').value=0;
+  if(document.getElementById('billSearch'))document.getElementById('billSearch').value='';
+  renderSelect();renderDashboard();renderProducts();
+  alert('Bill saved. Profit after discount: ₹'+money(profit));
+  showPage('dashboard',document.querySelector('nav button'));
 }
+
 function inPeriod(date,period){
  let d=new Date(date),now=new Date();
  if(period==='all')return true;
@@ -333,88 +368,6 @@ function toggleCustomDates(){
 }
 function renderReports(){
  let period=document.getElementById('period').value,bs=data.bills.filter(b=>inPeriod(b.date,period));
- let sale=bs.reduce((a,b)=>a+b.sale,0),cost=bs.reduce((a,b)=>a+b.cost,0);
+ let sale=bs.reduce((a,b)=>a+Number(b.sale||0),0),cost=bs.reduce((a,b)=>a+Number(b.cost||0),0);
  document.getElementById('rSales').textContent='₹'+money(sale);document.getElementById('rCost').textContent='₹'+money(cost);document.getElementById('rProfit').textContent='₹'+money(sale-cost);document.getElementById('rBills').textContent=bs.length;
- document.getElementById('history').innerHTML=bs.length?bs.map(b=>`<div class="billitem"><div class="productline"><b>Bill #${b.id}</b><span class="profit">Profit ₹${money(b.profit)}</span></div><div class="muted">${new Date(b.date).toLocaleString()}</div><div class="muted">${b.items.map(i=>`${esc(i.name)} × ${money(i.qty)} ${i.unit==='m'?'m':'pcs'}`).join(', ')}</div><div style="margin-top:5px"><b>Sale ₹${money(b.sale)}</b> • Cost ₹${money(b.cost)}</div><div style="margin-top:9px"><button class="secondary smallbtn" onclick="editBill(${b.id})">Edit</button> <button class="danger smallbtn" onclick="deleteBill(${b.id})">Delete</button></div></div>`).join(''):'<div class="empty">No bills for this period.</div>';
-}
-
-function recalcBill(b){
- b.sale=0;b.cost=0;
- b.items.forEach(i=>{b.sale+=i.sell*i.qty;b.cost+=i.buy*i.qty});
- b.profit=b.sale-b.cost;
-}
-
-
-function editBill(id){
- let password=prompt('Enter password to edit this bill:');
- if(password!=='1000'){alert('Incorrect password. Bill was not changed.');return}
- let b=data.bills.find(x=>x.id===id); if(!b)return;
- let original=JSON.parse(JSON.stringify(b));
- original.items.forEach(item=>{
-   let p=data.products.find(x=>x.id===item.productId) || data.products.find(x=>x.name===item.name);
-   if(p)p.stock+=item.qty;
- });
-
- let newItems=[];
- for(let i=0;i<b.items.length;i++){
-   let item=b.items[i], unit=item.unit||'pcs', label=unit==='m'?'meters':'pieces';
-   let q=prompt(`Quantity for ${item.name} (${label}):`,item.qty);
-   if(q===null){
-     original.items.forEach(oldItem=>{let p=data.products.find(x=>x.id===oldItem.productId)||data.products.find(x=>x.name===oldItem.name);if(p)p.stock-=oldItem.qty;});
-     return;
-   }
-   q=Number(q);
-   if(!Number.isFinite(q)||q<=0){
-     alert('Quantity must be greater than 0. No changes were saved.');
-     original.items.forEach(oldItem=>{let p=data.products.find(x=>x.id===oldItem.productId)||data.products.find(x=>x.name===oldItem.name);if(p)p.stock-=oldItem.qty;});
-     return;
-   }
-   newItems.push({...item,qty:q});
- }
- for(let i=newItems.length-1;i>=0;i--){
-   if(confirm(`Remove "${newItems[i].name}" from this bill?`)) newItems.splice(i,1);
- }
- if(!newItems.length){
-   if(confirm('No items remain. Delete this bill?')){
-     data.bills=data.bills.filter(x=>x.id!==id);save();renderReports();renderDashboard();renderProducts();alert('Bill deleted.');
-   } else {
-     original.items.forEach(oldItem=>{let p=data.products.find(x=>x.id===oldItem.productId)||data.products.find(x=>x.name===oldItem.name);if(p)p.stock-=oldItem.qty;});
-   }
-   return;
- }
- b.items=newItems;
- b.items.forEach(item=>{
-   let p=data.products.find(x=>x.id===item.productId)||data.products.find(x=>x.name===item.name);
-   if(p)p.stock=Math.max(0,p.stock-item.qty);
- });
- recalcBill(b);save();renderReports();renderDashboard();renderProducts();
- alert('Existing bill updated successfully.');
-}
-function deleteBill(id){
- let password=prompt('Enter password to delete this bill:');
- if(password!=='1000'){alert('Incorrect password. Bill was not deleted.');return}
- let b=data.bills.find(x=>x.id===id);
- if(!b)return;
- if(!confirm('Delete this bill permanently?'))return;
- // Return stock used by the deleted bill.
- b.items.forEach(item=>{
-   let p=data.products.find(x=>x.name===item.name);
-   if(p)p.stock+=item.qty;
- });
- data.bills=data.bills.filter(x=>x.id!==id);
- save();renderReports();renderDashboard();renderProducts();
-}
-
-function renderDashboard(){
- let bs=data.bills.filter(b=>dateKey(b.date)===dateKey());
- dSales.textContent='₹'+money(bs.reduce((a,b)=>a+b.sale,0));dProfit.textContent='₹'+money(bs.reduce((a,b)=>a+b.profit,0));
- recentBills.innerHTML=data.bills.slice(0,5).map(b=>`<div class="billitem"><div class="productline"><b>₹${money(b.sale)}</b><span class="profit">Profit ₹${money(b.profit)}</span></div><div class="muted">${new Date(b.date).toLocaleString()}</div></div>`).join('')||'<div class="empty">No bills yet.</div>';
-}
-function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
-supabaseClient.auth.getSession().then(async ({data:r})=>{
- if(r.session){cloudUser=r.session.user;await cloudLoad();cloudOpen();}
- else{document.getElementById('cloudLogin').style.display='flex';}
-});
-</script>
-</body>
-</html>
+ document.getElementById('history').innerHTML=bs.l
