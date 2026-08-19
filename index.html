@@ -1034,7 +1034,102 @@ b.profit=b.sale-b.cost;
 
 function editBill(id){
 
-let password=
-prompt('Enter password to edit this bill:');
+let b=data.bills.find(x=>x.id===id);
+if(!b)return;
 
-if(
+if(!confirm('Delete this bill?'))return;
+
+data.bills=data.bills.filter(x=>x.id!==id);
+
+save();
+renderDashboard();
+renderReports();
+
+alert('Bill deleted.');
+}
+
+function renderDashboard(){
+
+let today=data.bills.filter(b=>dateKey(b.date)===dateKey());
+
+let sales=today.reduce((a,b)=>a+b.sale,0);
+let profit=today.reduce((a,b)=>a+b.profit,0);
+
+document.getElementById('dSales').textContent='₹'+money(sales);
+document.getElementById('dProfit').textContent='₹'+money(profit);
+
+let el=document.getElementById('recentBills');
+
+if(!data.bills.length){
+el.innerHTML='<div class="empty">No bills yet.</div>';
+return;
+}
+
+el.innerHTML=data.bills.slice(0,5).map(b=>`
+<div class="billitem">
+<div class="productline">
+<b>Bill #${b.id}</b>
+<span class="${b.profit>=0?'profit':'loss'}">
+₹${money(b.profit)}
+</span>
+</div>
+<div class="muted">${new Date(b.date).toLocaleString()}</div>
+<div style="margin-top:5px">
+Sale ₹${money(b.sale)} • Cost ₹${money(b.cost)}
+</div>
+</div>
+`).join('');
+}
+
+function esc(s){
+
+return String(s??'')
+.replace(/&/g,'&amp;')
+.replace(/</g,'&lt;')
+.replace(/>/g,'&gt;')
+.replace(/"/g,'&quot;')
+.replace(/'/g,'&#039;');
+
+}
+
+async function restoreCloudSession(){
+
+try{
+
+const {data:r}=await supabaseClient.auth.getSession();
+
+if(r&&r.session&&r.session.user){
+
+cloudUser=r.session.user;
+await cloudLoad();
+cloudOpen();
+
+}else{
+
+document.getElementById('cloudLogin').style.display='flex';
+
+}
+
+}catch(e){
+
+console.error('Session restore failed:',e);
+
+}
+
+}
+
+document.addEventListener('DOMContentLoaded',()=>{
+
+renderDashboard();
+renderProducts();
+renderSelect();
+renderReports();
+toggleCustomDates();
+
+restoreCloudSession();
+
+});
+
+</script>
+</body>
+</html>
